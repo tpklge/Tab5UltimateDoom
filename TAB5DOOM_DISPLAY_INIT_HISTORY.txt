@@ -1,0 +1,641 @@
+FLASH TOTALMENTE APAGADA E REGRAVADA SEM SPIFFS — 2026-10-02
+-------------------------------------------------------
+Pedido explícito do usuário: apagar tudo, incluindo SPIFFS.
+esptool erase_flash concluído em16.8s; depois gravados apenas bootloader
+@0x2000 (22672bytes), tabela@0x8000 (3072bytes) e app@0x10000 (912208bytes).
+Hash verificado. NÃO gravado build/spiffs.bin; NVS/PHY também apagados.
+Partição SPIFFS mantida na tabela mas vazia/não formatada (mount -10025
+esperado); microSD preservado, WAD /sdcard/doom/doom.wad carregado em6781ms.
+Serial chegou aos gráficos, Render46.5->38.0fps e SFX sem panic.
+Flash16MiB, binários937952bytes (~0.895MiB).
+Área SPIFFS vazia14614528bytes=13.9375MiB (14.614528MB).
+Folga dentro da partição app1184944bytes=1.130MiB, reservada ao firmware.
+Flash menos tamanho dos binários15839264bytes=15.105MiB; esse total inclui
+reservas/alinhamentos e NVS/PHY, não é todo espaço disponível para arquivos.
+IMPORTANTE: CMake ainda FLASH_IN_PROJECT inclui WAD em flash convencional;
+para repetir sem SPIFFS usar os três offsets acima, não build/flash_args inteiro.
+Logs .debug_logs/clean-erase.log, clean-flash.log, clean-flash-serial.log.
+
+VALIDAÇÃO MICROSD /doom — 2026-10-02
+---------------------------------
+Após reset solicitado pelo usuário, serial confirmou SD montado e seleção
+/spiffs NÃO usada: Found SD IWAD: /sdcard/doom/doom.wad.
+Arquivo no cartão:11159840bytes (diferente do IWAD10396254bytes no SPIFFS).
+Preload PSRAM concluído em6811ms; DOOM Registered; gráficos inicializados.
+Config /sdcard/doom/default.cfg; savegames /sdcard/doom// (slash duplo
+aceito pelo VFS, sem falha observada). Teclado detectado/eventos recebidos,
+SFX sgtsit/itemup/dmact gerados e render46.5fps inicial. Sem abort observado.
+Logs preservados: .debug_logs/sd-doom-folder-serial.log.
+Nenhum novo flash neste teste; apenas monitoramento do reset.
+
+SUPORTE À PASTA /doom NO MICROSD — 2026-10-02
+------------------------------------------
+Pedido do usuário implementado: busca /sdcard/doom primeiro, depois raiz SD,
+por último SPIFFS. Cada local prioriza doom2/doom/doom1 (.wad ou .WAD).
+Mod chiquito procurado apenas junto do IWAD selecionado no SD.
+Com IWAD em /doom, chdir e doomEsp_savedir apontam /sdcard/doom/.
+Corrigido slash final no diretório config (antes gerava /sdcarddefault.cfg).
+Arquivo do cartão corresponde a /doom/DOOM.WAD, mount interno /sdcard/doom/DOOM.WAD.
+Não foi possível confirmar arquivo SD sem ele estar presente no cartão;
+firmware gravado e fallback SPIFFS monitorado. Logs sd-doom-folder-*.log.
+
+VALIDAÇÃO DO WAD COMPLETO E ÁUDIO — 2026-10-02
+-------------------------------------------
+Usuário confirmou após firmware audio-amp: "agora carregou a fase, e tem audio".
+Correção final saída física: P1 do expansor0x43 PUSH_PULL antes de set_level1;
+reset do driver mantinha HIGHZ=FF e set_dir/set_level não resolviam isso.
+Compatibilidade IWAD antigo: STBAR em duas metades, STTMINUS -> STCFN045,
+D_INTROA opcional, M_NMARE desenhado com fonte, demos pré1.4.
+WAD completo (três episódios) gravado no SPIFFS, hash verificado, original intacto.
+Preload PSRAM10396254bytes em4758ms; gráficos perto de9.8s após boot.
+Serial pós-flash: teclado+SFX, demo~37-39fps, PPA~9.7ms, sem novo abort.
+Música NÃO implementada; efeitos físicos agora confirmados. Logs finais:
+.debug_logs/audio-amp-build.log / audio-amp-flash.log / audio-amp-serial.log.
+Não repetir hipóteses ST7703 ou codec init apenas; display ST7123 validado.
+
+CONTINUAÇÃO — AMPLIFICADOR EM ALTA IMPEDÂNCIA — 2026-10-02
+------------------------------------------------------
+Menu M_NMARE corrigido: último firmware ficou >110s renderizando ~37-40fps,
+sem abort no serial, teclado detectado; usuário ainda relatou sem áudio.
+Encontrado no driver local PI4IOE5V6408: reset escreve HIGHZ=0xff.
+esp_io_expander_set_dir/set_level não alteram HIGHZ. Logo P1 com latch alto
+continuava open-drain/alta impedância, podendo não habilitar NS4150B.
+Agora bsp_audio_codec_speaker_init configura SOMENTE P1 PUSH_PULL,
+set_level alto com ESP_ERROR_CHECK e leitura do nível no serial.
+Não alterar P4: liberação LCD como entrada/pull-up já validada.
+Build/flash/monitor: .debug_logs/audio-amp-*.log. Som físico pendente.
+
+CONTINUAÇÃO — REINÍCIOS DO WAD ANTIGO E PSRAM — 2026-10-02
+------------------------------------------------------
+Não reabrir diagnóstico ST7123: aborts recentes são recursos ausentes do IWAD.
+Serial capturou D_INTROA ausente após gráficos: s_sound mantém D_INTRO se
+D_INTROA não existir. STTMINUS ausente: st_lib usa STCFN045 (fonte HUD).
+Depois de menu e teclas funcionarem, seleção de dificuldade abortou porque
+M_NMARE não existe: m_menu desenha NIGHTMARE! com a fonte HUD nesse caso.
+M_CELL1/2 também ausentes, mas funções não chamadas; M_EPI4 não é mostrado
+em DOOM Registered (três episódios). BOSSBACK é finale DOOM2, não este IWAD.
+SPIFFS atualizado e preservado em0x210000; flashes seguintes só do app.
+WAD copiado sequencialmente para PSRAM usando backend mapped já suportado
+pelo engine; fallback streaming se malloc/leitura falhar. 10396254 bytes em
+4758-4760ms. Depois R_Init/ST_Init terminam rapidamente, gráficos ~9.8s boot.
+STTMINUS corrigido: serial confirmou teclado, eventos, SFX pstop/pistol,
+42.2fps inicial e37-39fps durante demo; depois M_NMARE abortou (corrigido agora).
+ES8388: reset e sequência completa de DAC baseada em M5Unified, ADC off,
+clock DAC independente (2B=08), saída LOUT/ROUT, I2S11025Hz/MCLK256.
+Readback via I2C0x10 confirmado; API esp_codec_dev_write_reg não suportada.
+Áudio físico ainda NÃO confirmado; não confundir SFX logados com som audível.
+Música continua sem sintetizador. Logs: .debug_logs/psram-audio-serial.log,
+old-wad-minus-serial.log e old-wad-menu-serial.log (última gravação).
+
+CONTINUAÇÃO — WAD COMPLETO E DIAGNÓSTICO DE ÁUDIO — 2026-10-02
+----------------------------------------------------------
+WAD fornecido: spiffs/DOOM.WAD, IWAD10396254bytes,2074lumps, episódios1/2/3,
+61DS sounds DMX format3 a11025Hz; SHA256:
+68243b47ea430bec5f6037c49ff5598f9484ac67e25331dfd0e469b95fe9c8cb
+Arquivo preservado sem alterações.
+Partições atualizadas para flash16MB: app2MiB @0x10000;
+SPIFFS0xDF0000bytes @0x210000; NVS/PHY mantidos.
+Novo SPIFFS gerado e gravado com tabela/app/bootloader; esptool verificou hash.
+Loader SPIFFS detecta nomes maiúsculos/minúsculos e usa fopen, pois access
+não encontrou IWAD no VFS SPIFFS. Serial confirmou /spiffs/DOOM.WAD e
+"DOOM Registered".
+WAD é uma edição antiga: não contém STBAR. Implementado fallback que desenha
+STMBARL104x32 + STMBARR216x32 lado a lado. Cabeçalhos de DEMO1/2/3 são
+pré1.4, sem byte versão: adicionada leitura de skill/episode/map/player flags,
+sem consumir flags modernas inexistentes (demos E2M4,E3M3,E3M6).
+Áudio: dev_type OUT e I2S sóTX, removendo tentativa de habilitar RX.
+Codec aberto antes de volume70/unmute; retorno de escrita verificado.
+Tom curto440Hz na inicialização para distinguir saída física de efeitos.
+Primeiro tom não ouvido pelo usuário. Novo teste aplica DAC routing
+M5Unified via I2C direto em0x10 (API codec write_reg não suportada):
+02=0A,27=B8,2A=B8,2B=08,19=20, readback confirmado no serial.
+Mantido ratio MCLK256; todo DS deste WAD é11025Hz.
+Mixer priority5; validação limites DMX antes de tocar, primeiros5SFX logados.
+Música continua dummy (não sintetizada); efeitos e música são caminhos distintos.
+Logs: .debug_logs/full-wad-flash.log; full-wad-loader-serial.log;
+full-wad-compat-build.log / full-wad-compat-flash.log / full-wad-compat-serial.log.
+Validação física áudio solicitada; inicialização de gráficos monitorada.
+
+VALIDAÇÃO FINAL DO USUÁRIO — 2026-10-02
+-------------------------------------
+Usuário confirmou: "Paisagem e controles funcionando" no firmware atual.
+Build e flash OK; serial após flash confirmou ST7123, 27 comandos com FIFO
+esvaziada, Tab5 Keyboard em0x6D detectado e evento de tecla recebido.
+Últimas medições: ~35.8-40.8 fps em cena corrente, PPA~9.7ms/max~10.1ms.
+Houve janela anterior com9.5fps no contador: lags não considerados resolvidos.
+Removida sincronização redundante de framebuffer; diagnóstico de desempenho
+mantido. Próxima investigação deve medir lógica do jogo/leituras WAD separadas
+antes de alterar novamente a inicialização do display, que está validada.
+Logs locais ignorados pelo git, preservados em .debug_logs/keyboard-serial.log.
+
+CONTINUAÇÃO — PAISAGEM, RENDERIZAÇÃO E TAB5 KEYBOARD
+-------------------------------------------------
+Após sucesso ST7123, usuário relatou lags ocasionais e orientação retrato;
+pediu suporte ao teclado original M5Stack conectado à Ext.Port1.
+Firmware seguinte flashado e monitorado:
+- Rotação PPA 90 graus; escala quantizada 3.5625 (hardware precisão 1/16).
+  DOOM 1140x712 em landscape 1280x720; framebuffer físico720x1280,
+  bloco rotacionado712x1140, offset físico (4,70).
+- Removido cache writeback C2M do framebuffer completo após cada PPA e
+  sincronização redundante da entrada. Driver IDF PPA já sincroniza janelas.
+- Retorno PPA agora verificado; log de FPS e duração média/máxima a cada 5s.
+  Medições no firmware landscape anterior: PPA ~9.7ms (máx ~9.8ms),
+  FPS variou24-39 conforme a cena. Não afirmar que todos os lags foram resolvidos.
+- USB-A 5V habilitado via read/modify/write em0x44/P3, preservando outros bits.
+- Teclado original NÃO é USB: I2C1 SDA=GPIO0,SCL=GPIO1, endereço0x6D.
+  Task dedicada lê modo Normal(reg0x10=0), eventos reg0x20:
+  bit7=press/release, bits6:4=linha0..4, bits3:0=coluna0..13; FF=fila vazia.
+  Mapeamento matriz baseado no M5Unit-KEYBOARD da M5Stack.
+  Suporta teclas simultâneas, mantém estado, sem soltar tecla enquanto outra
+  tecla física com o mesmo mapeamento estiver pressionada.
+  Controles: WASD/setas=mover/girar; Ctrl=atirar; E/Espaço=usar;
+  Aa=correr; Alt=strafe; Enter=confirmar; Esc=menu; 1..7=armas.
+- Serial confirmou "Tab5 Keyboard ready" e primeiro evento de jogo recebido.
+  Validação visual da orientação e jogabilidade ainda solicitada ao usuário.
+- Logs atuais: .debug_logs/keyboard-build.log / keyboard-flash.log /
+  keyboard-serial.log. Sempre monitorar depois do flash.
+- Fonte do protocolo: https://github.com/m5stack/M5Unit-KEYBOARD
+
+RESULTADO CONFIRMADO — CONTINUAÇÃO 2026-10-02
+-------------------------------------------
+SUCESSO VISUAL: após o último flash, o usuário confirmou "opa agora aparecei".
+Firmware ST7123: DOOM inicia e a tela apresenta imagem. Não repetir os testes
+antigos de ST7703 para este aparelho: controlador identificado é ST7123.
+Causa principal identificada: reset do touch estava em P5 (camera), devia ser
+P6. Após corrigir P6 e liberar LCD P4 como entrada/pull-up, surgiu I2C 0x55.
+Leitura 16-bit do registro 0x0000 retornou versão 3 (ST7123), ESP_OK.
+Driver e tabela corretos: components/esp_lcd_st7123, sequência M5Stack completa
+(27 comandos), ACK desabilitado e verificação de FIFO após cada comando.
+Payloads de 40, 55 e 60 bytes transmitidos e FIFOs esvaziadas: refuta o limite
+absoluto de 32 bytes alegado anteriormente. Não houve necessidade de fragmentar.
+Timings: 965 Mbps, 2 lanes; DPI 70 MHz; H pulse/back/front=2/40/40;
+V pulse/back/front=2/8/220; framebuffer RGB565 720x1280 (DOOM 720x450).
+Reset e sequência de comandos são executados antes da criação do DPI.
+Logs preservados: .debug_logs/st7123-serial.log e st7123-flash.log.
+Imagem levou algum tempo para aparecer; não concluir falha imediatamente
+quando o serial chega a M_Init/R_Init. Aguardar I_InitGraphics e observar tela.
+Touch integrado ainda não inicializado; áudio/teclado não validados pelo usuário.
+Observado log de áudio: i2s_channel_disable: channel not enabled yet; não
+impediu inicialização nem imagem. Não alterado nesta tarefa focada no display.
+A cópia local ST7703 é preservada como registro de diagnóstico, não usada
+pelo BSP atual. Comentários do BSP corrigidos para ST7123 após sucesso.
+
+ATUALIZAÇÃO DA CONTINUAÇÃO — 2026-10-02
+--------------------------------------
+Este adendo substitui as conclusões antigas quando houver conflito.
+
+Tentativa 8 finalmente flashada: DOOM chega a I_InitGraphics pelo serial,
+mas usuário confirmou tela preta com backlight. Auto-enable não resolveu.
+
+Tentativa 9 (nova): desabilitar solicitação de ACK de comandos DCS no host.
+O DBI do IDF habilita ACK e o HAL espera sem timeout. Driver agora copiado
+para components/esp_lcd_st7703 (versionado; não depende só de managed_components).
+Após cada comando pré-DPI, verifica FIFO de comandos e payload vazias,
+com timeout de 100 ms. Isso NÃO é timeout dentro do envio HAL: o envio em si
+ainda pode bloquear; também não prova que o painel reconhece os comandos.
+Primeiro teste com os mesmos 19 comandos: todos esvaziam FIFO, DOOM inicia.
+Segundo teste: adicionados 0x36=00 e 0x3A=55 após EF; Sleep Out 0x11 sem
+parâmetro; Display On 0x29 após 250 ms, ainda antes da criação do DPI.
+Todos os 22 comandos esvaziam ambas FIFOs, incluindo 3A após EF e 29 após 11.
+Usuário confirmou que a tela ainda fica preta com backlight.
+
+CORREÇÃO DE CONCLUSÕES: não há bloqueio permanente de LP pós-Sleep-Out
+com ACK desabilitado. O suposto bloqueio por EF também não se reproduz.
+As alegações de FIFO limitada a 32 bytes e E9/EA serem só gamma NÃO foram
+validadas nesta continuação. Não fragmentar esses registradores sem documentação.
+Ainda faltam C8/E0/E9/EA e identificação comprovada do painel físico.
+
+Tentativa 10 (nova): touch reset corrigido de P5 (camera reset) para P6;
+LCD P4 liberado como entrada com pull-up, output latch mantido baixo,
+conforme BSP M5Stack consultado antes da restrição de leitura fora do projeto.
+Build concluído; flash e monitor serial executados nesta continuação.
+Resultado detalhado em .debug_logs/reset-serial.log; confirmar imagem com usuário.
+
+Logs preservados no projeto:
+  .debug_logs/display-on-flash.log / display-on-serial.log
+  .debug_logs/reset-build.log / reset-flash.log / reset-serial.log
+Fonte oficial consultada (driver físico ainda precisa confirmação):
+  https://github.com/m5stack/M5Tab5-UserDemo/blob/main/platforms/tab5/components/m5stack_tab5/m5stack_tab5.c
+  https://docs.m5stack.com/en/core/Tab5
+
+================================================================================
+  Tab5Doom — Histórico Completo de Depuração da Inicialização do Display
+  ST7703 via MIPI-DSI no ESP32-P4 (M5Stack Tab5)
+  Para continuidade em nova sessão de agente
+================================================================================
+
+CONTEXTO
+--------
+Hardware: ESP32-P4, MIPI-DSI 2 lanes, painel ST7703 (720×1280)
+Driver:   managed_components/espressif__esp_lcd_st7703/esp_lcd_st7703.c
+BSP:      main/bsp_tab5.c
+ESP-IDF:  v5.4.4
+
+O problema central é conseguir executar a sequência completa de inicialização
+do painel ST7703 via comandos LP (Low Power) na interface MIPI-DSI, seguida
+de início do streaming DPI (vídeo), e finalmente exibição do DOOM.
+
+ANATOMIA DO PROBLEMA
+--------------------
+A inicialização do ST7703 exige dois estágios:
+  1. Comandos de vendor (registradores 0xB9..0xEF) via LP antes do DPI
+  2. Comandos DCS padrão (0x36 MADCTL, 0x3A COLMOD, 0x11 Sleep Out, 0x29 Display On)
+
+O ESP32-P4 usa o componente esp_lcd_new_panel_dpi() para criar o painel DPI.
+Após criá-lo, o DSI bridge fica ativo e começa a contar frames. Se nenhum dado
+de vídeo chegar em ~18 frames (~320ms a 58MHz/804×1312), o bridge entra em
+estado de underrun e bloqueia o drain da FIFO LP indefinidamente.
+
+O ST7703, por sua vez, após receber o Sleep Out (0x11), ocupa os lanes DSI com
+seu PHY e bloqueia TODOS os comandos LP subsequentes — inclusive durante
+intervalos de blanking, inclusive após DPI estar transmitindo.
+
+Isso cria um conflito: precisamos enviar cmds antes do DPI, mas o DPI precisa
+estar rodando para os cmds poderem ser enviados depois de 0x11.
+
+================================================================================
+TENTATIVA 1 — Fluxo original (antes do porting)
+================================================================================
+
+Código original do driver esp_lcd_st7703 (upstream):
+  - esp_lcd_new_panel_st7703() → esp_lcd_new_panel_dpi() → retorna handle
+  - panel_st7703_reset() → HW reset via GPIO
+  - panel_st7703_init() → envia todos os vendor cmds + MADCTL + COLMOD + 0x11 + 0x29
+  - panel_st7703_disp_on_off(true) → envia 0x29
+
+Problema no Tab5:
+  - LCD_RESET_GPIO = GPIO_NUM_NC (reset é feito via IO expander ANTES da criação do panel)
+  - Ao tentar enviar os vendor cmds em panel_st7703_init(), o DSI bridge já está
+    ativo há >320ms → FIFO LP bloqueada desde o primeiro comando
+  - HANG imediato no primeiro vendor cmd (0xB9)
+
+Log observado:
+  I (...) st7703: esp_lcd_new_panel_dpi OK @0x4ff37594
+  I (...) st7703: panel_st7703_reset: (skip — NC gpio)
+  I (...) st7703: panel_st7703_init: start
+  I (...) st7703: cmd[0]: 0xB9 (3 bytes)
+  [HANG — nunca retorna]
+
+================================================================================
+TENTATIVA 2 — Campo init_in_command_mode + envio pré-DPI
+================================================================================
+
+Hipótese: se enviarmos os vendor cmds ANTES de esp_lcd_new_panel_dpi(), o DSI
+bridge ainda não estará ativo e os cmds LP passarão normalmente.
+
+Implementação:
+  - Adicionado campo `init_in_command_mode` em st7703_vendor_config_t (já existia)
+  - Em esp_lcd_new_panel_st7703(): se init_in_command_mode=true, envia TODOS
+    os vendor cmds + MADCTL + COLMOD + 0x11 + 0x29 ANTES de chamar
+    esp_lcd_new_panel_dpi()
+  - Adicionado campo `vendor_cmds_done = true` após envio
+
+Resultado: PARCIALMENTE FUNCIONAL
+  - Os vendor cmds (0xB9..0xEF) passam sem hang
+  - 0x36 MADCTL passa
+  - 0x3A COLMOD passa
+  - 0x11 Sleep Out passa (com 250ms delay)
+  - 0x29 Display On passa
+  - DPI inicia após retorno de esp_lcd_new_panel_st7703()
+
+Problema restante: display permanece em branco / sem sinal visual.
+
+Log observado:
+  I (...) st7703: pre-DPI cmd[0]: 0xB9 (3 bytes)
+  ...
+  I (...) st7703: pre-DPI cmd[18]: 0x11 (1 bytes)
+  I (...) st7703: pre-DPI cmd[19]: 0x29 (0 bytes)
+  I (...) st7703: pre-DPI vendor init cmds done
+  I (...) st7703: esp_lcd_new_panel_dpi OK
+  [display sem output visual]
+
+Status: Build OK, flash OK, sem hang, mas sem imagem.
+
+================================================================================
+TENTATIVA 3 — Investigação de quais comandos bloqueiam LP
+================================================================================
+
+Hipótese: algum comando na sequência vendor muda o estado interno do ST7703
+de forma que comandos LP subsequentes ficam bloqueados naquele mesmo contexto
+pré-DPI (antes do esp_lcd_new_panel_dpi).
+
+Teste sistemático: mover cada comando suspeito para DEPOIS de esp_lcd_new_panel_dpi
+e observar qual causa o hang.
+
+Resultados dos testes:
+
+  Cmd 0xC8 (1 byte: 0x25):
+    - Quando incluído na sequência pré-DPI e 0x3A é enviado logo depois:
+      0x3A TRAVA
+    - Quando 0xC8 é omitido: 0x3A passa normalmente
+    - Conclusão: 0xC8 muda o estado de recepção DSI do painel e faz comandos
+      DCS padrão subsequentes travar
+    - Ação: 0xC8 OMITIDO permanentemente da sequência
+
+  Cmds 0xE0 (34 bytes), 0xE9 (63 bytes), 0xEA (63 bytes):
+    - O FIFO TX do DSI bridge tem 32 bytes de profundidade
+    - Qualquer payload > 32 bytes causa deadlock de hardware no envio
+    - A função esp_lcd_panel_io_tx_param() não fragmenta automaticamente
+    - Ação: 0xE0, 0xE9, 0xEA OMITIDOS permanentemente
+    - Nota: são comandos de gamma correction — ausência afeta qualidade de cor
+      mas não impede funcionamento básico
+
+  Cmd 0xEF (3 bytes: 0xFF, 0xFF, 0x01):
+    - Quando 0xEF está incluído e tentamos enviar 0x3A depois:
+      0x3A TRAVA (mas 0x36 não trava)
+    - Quando 0xEF é omitido: 0x3A passa normalmente
+    - Conclusão: 0xEF coloca o painel em estado que bloqueia 0x3A especificamente
+    - Dilema: 0xEF provavelmente é necessário para o display funcionar
+    - Ação: 0xEF mantido; 0x36 e 0x3A omitidos (defaults do painel usados)
+
+Log durante teste do 0xEF:
+  I (1917) st7703: pre-DPI cmd[18]: 0x36 (1 bytes)  ← passa em T=1917ms
+  I (1927) st7703: pre-DPI cmd[19]: 0x3A (1 bytes)  ← trava em T=1927ms
+  [HANG]
+
+================================================================================
+TENTATIVA 4 — Sequência com 0x11 e 0x29 pré-DPI
+================================================================================
+
+Após resolver os bloqueios de 0xC8 e 0xEF/0x3A, nova sequência de 19 comandos:
+  0xB9, 0xB1, 0xB2, 0xB3, 0xB4, 0xB5, 0xB6, 0xB8, 0xBA (50ms),
+  0xBC, 0xBF, 0xC0, 0xC1, 0xC6, 0xC7, 0xCC, 0xE3, 0xEF, 0x11 (250ms), 0x29
+
+Resultado:
+  - Todos os 19 cmds (B9..0x11) passam OK
+  - 0x29 passa OK (ainda estamos antes do esp_lcd_new_panel_dpi)
+  - DPI inicia
+  - display ainda em branco
+
+Problema identificado: os 19 cmds passam porque estão ANTES do esp_lcd_new_panel_dpi.
+Mas mesmo com todos os cmds corretos + DPI rodando, a tela fica branca.
+
+Hipótese nova: talvez o problema seja na fase PÓS-DPI — MADCTL, COLMOD, ou 0x29
+precisam ser reenviados após o DPI estar rodando (comportamento normal do ST7703).
+
+================================================================================
+TENTATIVA 5 — MADCTL e COLMOD após DPI (em panel_st7703_init)
+================================================================================
+
+Fluxo modificado:
+  1. pré-DPI: envia 19 vendor cmds (sem 0x36, sem 0x3A, sem 0x29)
+     vendor_cmds_done = true
+  2. esp_lcd_new_panel_dpi() → DPI handle criado
+  3. panel_st7703_reset() → skipped (vendor_cmds_done=true)
+  4. panel_st7703_init():
+       - chama st7703->init(panel) → inicia DPI video
+       - vTaskDelay(20ms) → espera primeiro blanking interval
+       - envia MADCTL (0x36) via LP
+       - vTaskDelay(10ms)
+       - envia COLMOD (0x3A) via LP
+  5. panel_st7703_disp_on_off(true):
+       - espera 2s (aguardar DSI se estabilizar)
+       - envia 0x29 Display On
+
+Resultado: HANG em MADCTL (0x36) no passo 4
+
+Log observado:
+  I (2167) st7703: pre-DPI vendor init cmds done
+  I (2187) st7703: esp_lcd_new_panel_dpi OK @0x4ff37594
+  I (2187) st7703: panel_st7703_reset: skipped
+  I (2187) st7703: panel_st7703_init: starting DPI (vendor cmds already done)
+  I (2197) st7703: panel_st7703_init: DPI started, sending MADCTL/COLMOD via blanking
+  [20ms delay]
+  I (2217) st7703: panel_st7703_init: sending MADCTL=0x00 COLMOD=0x55
+  [HANG em mipi_dsi_host_ll_gen_is_cmd_fifo_full]
+
+Conclusão: Após Sleep Out (0x11), o ST7703 PHY ocupa os DSI lanes e bloqueia
+TODOS os comandos LP permanentemente — mesmo com DPI rodando, mesmo durante
+blanking intervals, mesmo esperando 20ms.
+
+================================================================================
+TENTATIVA 6 — Aguardar mais tempo antes de MADCTL (2s)
+================================================================================
+
+Hipótese: talvez 20ms não seja suficiente. Testar com 2000ms.
+
+Modificação em panel_st7703_init(): vTaskDelay(2000ms) antes de MADCTL.
+
+Resultado: HANG em MADCTL igualmente.
+  - T=2187ms: DPI started
+  - T=4187ms: (após 2s) tentativa de MADCTL
+  - [HANG imediato]
+
+Conclusão confirmada: o bloqueio LP é permanente e independente de tempo de espera.
+Não é uma questão de timing, é um estado do hardware do painel.
+
+================================================================================
+TENTATIVA 7 — Skip de MADCTL/COLMOD, mover 0x29 para pós-DPI
+================================================================================
+
+Hipótese: e se simplesmente não enviarmos MADCTL e COLMOD pós-DPI?
+  - MADCTL default = 0x00 (sem mirror, sem swap, RGB order) → aceitável
+  - COLMOD: o vendor init já configurou o formato de pixel via registrador 0xB2
+    O ESP-IDF DPI envia RGB565; o painel aceita sem COLMOD explícito
+  - Testar apenas o 0x29 Display On pós-DPI
+
+Modificação:
+  - panel_st7703_init(): skip de MADCTL/COLMOD quando vendor_cmds_done=true
+  - panel_st7703_disp_on_off(): ainda tenta enviar 0x29, mas com wait de 2s
+
+Resultado: HANG em 0x29 (Display On)
+
+Log observado:
+  I (2227) st7703: panel_st7703_init: MADCTL/COLMOD already sent ..., skipping
+  I (2227) st7703: disp_on_off: waiting for panel to accept LP (post-DPI)...
+  I (4227) st7703: disp_on_off: sending 0x29 (Display On)
+  [HANG]
+
+Conclusão: 0x29 também está permanentemente bloqueado após Sleep Out.
+A afirmação "todos LP bloqueados após 0x11" se confirma para todos os comandos testados:
+  - 0x36 MADCTL: bloqueado
+  - 0x3A COLMOD: bloqueado
+  - 0x29 Display On: bloqueado
+
+================================================================================
+TENTATIVA 8 — Skip total de 0x29, confiar em auto-enable do painel
+================================================================================
+
+Hipótese: alguns painéis ST7703 auto-habilitam a saída de vídeo quando recebem
+o primeiro burst de dados HS (High Speed) do DPI, sem necessidade de 0x29 explícito.
+Se for o caso, podemos simplesmente ignorar o Display On.
+
+Implementação atual (COMPILADO, NÃO FLASHADO):
+  - panel_st7703_disp_on_off(): quando vendor_cmds_done=true, retorna ESP_OK
+    imediatamente sem enviar nenhum comando LP
+
+Código atual em esp_lcd_st7703.c:
+```c
+static esp_err_t panel_st7703_disp_on_off(esp_lcd_panel_t *panel, bool on_off)
+{
+    st7703_panel_t *st7703 = (st7703_panel_t *)panel->user_data;
+    esp_lcd_panel_io_handle_t io = st7703->io;
+
+    if (st7703->vendor_cmds_done) {
+        ESP_LOGI(TAG, "disp_on_off(%d): skipped (LP blocked post-Sleep-Out; display self-enables on video)", on_off);
+        return ESP_OK;
+    }
+
+    int command = on_off ? LCD_CMD_DISPON : LCD_CMD_DISPOFF;
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_io_tx_param(io, command, NULL, 0), TAG, "send command failed");
+    return ESP_OK;
+}
+```
+
+Status: BUILD OK, NÃO TESTADO ainda.
+
+================================================================================
+ESTADO ATUAL DO CÓDIGO
+================================================================================
+
+vendor_specific_init_default[] — 19 comandos na ordem:
+  [0]  0xB9: {0xF1, 0x12, 0x83} — unlock vendor cmds
+  [1]  0xB1: {0x00, 0x00, 0x00, 0xDA, 0x80} — power control
+  [2]  0xB2: {0xC8, 0x02, 0xF0} — display control (inclui pixel format)
+  [3]  0xB3: {0x10, 0x10, 0x28, 0x28, 0x03, 0xFF, 0x00, 0x00, 0x00, 0x00}
+  [4]  0xB4: {0x80}
+  [5]  0xB5: {0x0A, 0x0A}
+  [6]  0xB6: {0x8B, 0x8B}
+  [7]  0xB8: {0x26, 0x22, 0xF0, 0x13}
+  [8]  0xBA: {31 bytes DSI lane timing} + 50ms delay
+  [9]  0xBC: {0x47}
+  [10] 0xBF: {0x02, 0x11, 0x00}
+  [11] 0xC0: {9 bytes}
+  [12] 0xC1: {12 bytes}
+  [13] 0xC6: {6 bytes}
+  [14] 0xC7: {6 bytes}
+       (0xC8 OMITIDO — bloqueia LP subsequentes)
+  [15] 0xCC: {0x0B}
+       (0xE0 OMITIDO — 34 bytes > FIFO 32 bytes)
+  [16] 0xE3: {14 bytes}
+       (0xE9 OMITIDO — 63 bytes > FIFO 32 bytes)
+       (0xEA OMITIDO — 63 bytes > FIFO 32 bytes)
+  [17] 0xEF: {0xFF, 0xFF, 0x01}
+       (0x36 MADCTL OMITIDO — após 0xEF bloqueia 0x3A)
+       (0x3A COLMOD OMITIDO — bloqueado após 0xEF)
+  [18] 0x11: {0x00} + 250ms delay (Sleep Out)
+       (0x29 Display On OMITIDO — após 0x11 TODOS LP bloqueados)
+
+FLUXO ATUAL (pós-Tentativa 8):
+  1. bsp_tab5.c: IO expander reset LCD → 120ms
+  2. esp_lcd_new_panel_st7703() → detecta init_in_command_mode=true
+  3. Envia cmds[0..18] via LP  (todos antes de esp_lcd_new_panel_dpi)
+  4. vendor_cmds_done = true
+  5. esp_lcd_new_panel_dpi() → DSI bridge ativo, DPI handle criado
+  6. esp_lcd_panel_reset() → skipped
+  7. esp_lcd_panel_init() → chama st7703->init(panel) → DPI video inicia
+  8. esp_lcd_panel_disp_on_off(true) → skipped (retorna ESP_OK)
+  9. DOOM recebe framebuffer, PPA escala 320×200 → 720×450, envia para DPI
+
+================================================================================
+PRÓXIMOS PASSOS SUGERIDOS
+================================================================================
+
+PASSO IMEDIATO:
+  Flash o firmware atual e observar se o display exibe algo.
+  Comando:
+    lsof /dev/cu.usbmodem101 | awk 'NR>1{print $2}' | sort -u | xargs kill -9
+    idf.py -p /dev/cu.usbmodem101 flash monitor
+
+  Procurar no log:
+    "disp_on_off(1): skipped (LP blocked post-Sleep-Out...)"
+    Seguido de logs do DOOM: W_Init, Z_Init, V_Init, D_DoomLoop...
+    Verificar se o display acende e mostra imagem.
+
+SE DISPLAY MOSTRAR IMAGEM (sucesso):
+  - Verificar orientação e escala (320×200 → 720×450, letterbox 415px topo/base)
+  - Testar entrada via teclado USB
+  - Testar áudio (ES8388 I2C 0x10, I2S @ 11025 Hz)
+  - Verificar touch (endereços 0x40/0x41 no scan — pode ser GT911 alt addr)
+
+SE DISPLAY FICAR EM BRANCO (hipótese do auto-enable errada):
+  Opção A: Mover 0x29 para ANTES de 0x11 na sequência vendor
+    - Não é ordem padrão do datasheet ST7703, mas pode funcionar
+    - Testar: [..., 0xEF, 0x29, 0x11 (250ms)]
+    - Risco: painel pode ignorar 0x29 antes do Sleep Out
+
+  Opção B: Enviar 0x29 em modo HS (High Speed) em vez de LP
+    - O ESP32-P4 DSI host suporta embedded command packets em HS
+    - Requer uso direto de mipi_dsi_host_ll_gen_wr_packet() com HS flag
+    - Mais complexo mas contorna o bloqueio LP completamente
+
+  Opção C: Verificar se 0xEF pode ser omitido
+    - 0xEF bloqueia 0x3A → se omitirmos 0xEF, podemos enviar 0x3A
+    - Testar sequência: [..., 0xCC, 0xE3, 0x3A, 0x11, 0x29]
+    - Risco: 0xEF pode ser necessário para alguma função interna do painel
+
+  Opção D: Reset completo e nova tentativa pós-DPI
+    - Após DPI iniciar, tentar pulso de reset via IO expander
+    - Enviar sequência completa novamente (painel recomeça do zero)
+    - Problema: reset após DPI ativo pode causar underrun
+
+INVESTIGAÇÃO DE QUALIDADE DE COR (opcional):
+  - 0xE0, 0xE9, 0xEA são tabelas gamma (63 bytes cada)
+  - Para enviá-los, precisamos fragmentar em chunks de ≤30 bytes
+  - O ST7703 suporta escrita parcial de registradores via comandos sequenciais?
+  - Alternativa: usar DCS Long Write command (0x39) que suporta payloads maiores
+    via burst HS — verificar se esp_lcd_panel_io_tx_param usa Short ou Long Write
+
+================================================================================
+REFERÊNCIAS DE CÓDIGO
+================================================================================
+
+Arquivo principal do driver:
+  managed_components/espressif__esp_lcd_st7703/esp_lcd_st7703.c
+
+Arquivo BSP:
+  main/bsp_tab5.c
+
+Struct do painel (linha 22-37 de esp_lcd_st7703.c):
+  typedef struct {
+      esp_lcd_panel_io_handle_t io;
+      int reset_gpio_num;
+      uint8_t madctl_val;
+      uint8_t colmod_val;
+      const st7703_lcd_init_cmd_t *init_cmds;
+      uint16_t init_cmds_size;
+      bool init_in_command_mode;
+      bool vendor_cmds_done;    // ← campo adicionado nesta sessão
+      struct { unsigned int reset_level: 1; } flags;
+      esp_err_t (*del)(esp_lcd_panel_t *panel);
+      esp_err_t (*init)(esp_lcd_panel_t *panel);
+  } st7703_panel_t;
+
+Função que envia cmds pré-DPI (linha 47-59):
+  st7703_send_vendor_init_cmds(io, cmds, n)
+
+Onde vendor_cmds_done é setado (linha 176):
+  st7703->vendor_cmds_done = true;  // após envio pré-DPI
+
+================================================================================
+COMPORTAMENTO DO HARDWARE DOCUMENTADO
+================================================================================
+
+Comportamento do ESP32-P4 DSI bridge:
+  - Após esp_lcd_new_panel_dpi(): bridge ativo, frame counter inicia
+  - ~18 frames sem dados de vídeo → bridge em underrun → FIFO LP bloqueada
+  - Durante DPI ativo: LP disponível apenas nos blanking intervals
+  - Blanking intervals: front porch + sync + back porch por linha e por frame
+  - Com timing atual: htotal=804, vtotal=1312, clk=58MHz → ~55fps → ~18ms/frame
+    vsync blanking = (16+4+12) linhas × 804 pixels = ~468µs/frame
+
+Comportamento do ST7703 pós-Sleep-Out (0x11):
+  - Panel PHY ocupa os DSI lanes após wakeup
+  - TODOS os comandos LP são bloqueados permanentemente
+  - Esse comportamento foi confirmado em 4 tentativas diferentes com tempos
+    de espera variando de 20ms a 2000ms
+  - O bloqueio é independente do estado do DPI (antes ou depois de iniciar)
+  - Afeta: 0x36 (MADCTL), 0x3A (COLMOD), 0x29 (Display On) — todos confirmados
+
+Comportamento específico de 0xEF no ST7703:
+  - Após 0xEF, o comando 0x3A (COLMOD) fica bloqueado mesmo PRÉ-DPI
+  - O comando 0x36 (MADCTL) ainda passa após 0xEF
+  - O comando 0x11 (Sleep Out) ainda passa após 0xEF
+  - Esse comportamento foi reproduzido consistentemente
+
+Limites do FIFO TX DSI:
+  - Capacidade confirmada: 32 bytes
+  - Comandos acima de 32 bytes causam deadlock de hardware
+  - Não há mecanismo automático de fragmentação no ESP-IDF v5.4.4
+
+================================================================================

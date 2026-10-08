@@ -1,0 +1,370 @@
+CARREGADOR DOOM II NO MICROSD — 2026-10-05
+---------------------------------------
+Base de trabalho renomeada de Tab5Doom1 para Tab5Doom2.
+Carregador restrito a /sdcard/doom/doom2.wad e /sdcard/doom2.wad,
+aceitando também DOOM2.WAD, com prioridade para a pasta /doom.
+Removidas seleção de doom.wad/doom1.wad, montagem SPIFFS e fallback de IWAD
+na flash. Sem cartão montado ou sem doom2.wad, registra erro e não inicia.
+Configurações, saves e mod opcional continuam junto do IWAD selecionado.
+Build completo validado com ESP-IDF 5.4.4 para esp32p4, usando diretório novo
+para não reutilizar o cache copiado. App cabe na partição de 2 MiB.
+Log: .debug_logs/doom2-loader-build.log. Nenhum flash realizado nesta etapa.
+Esta alteração não confirma execução de Doom II no aparelho; WAD e teste
+de hardware ainda pendentes. Os registros abaixo são da versão anterior.
+
+FLASH TOTALMENTE APAGADA E REGRAVADA SEM SPIFFS — 2026-10-02
+-------------------------------------------------------
+Pedido explícito do usuário: apagar tudo, incluindo SPIFFS.
+esptool erase_flash concluído em16.8s; depois gravados apenas bootloader
+@0x2000 (22672bytes), tabela@0x8000 (3072bytes) e app@0x10000 (912208bytes).
+Hash verificado. NÃO gravado build/spiffs.bin; NVS/PHY também apagados.
+Partição SPIFFS mantida na tabela mas vazia/não formatada (mount -10025
+esperado); microSD preservado, WAD /sdcard/doom/doom.wad carregado em6781ms.
+Serial chegou aos gráficos, Render46.5->38.0fps e SFX sem panic.
+Flash16MiB, binários937952bytes (~0.895MiB).
+Área SPIFFS vazia14614528bytes=13.9375MiB (14.614528MB).
+Folga dentro da partição app1184944bytes=1.130MiB, reservada ao firmware.
+Flash menos tamanho dos binários15839264bytes=15.105MiB; esse total inclui
+reservas/alinhamentos e NVS/PHY, não é todo espaço disponível para arquivos.
+IMPORTANTE: CMake ainda FLASH_IN_PROJECT inclui WAD em flash convencional;
+para repetir sem SPIFFS usar os três offsets acima, não build/flash_args inteiro.
+Logs .debug_logs/clean-erase.log, clean-flash.log, clean-flash-serial.log.
+
+VALIDAÇÃO MICROSD /doom — 2026-10-02
+---------------------------------
+Após reset solicitado pelo usuário, serial confirmou SD montado e seleção
+/spiffs NÃO usada: Found SD IWAD: /sdcard/doom/doom.wad.
+Arquivo no cartão:11159840bytes (diferente do IWAD10396254bytes no SPIFFS).
+Preload PSRAM concluído em6811ms; DOOM Registered; gráficos inicializados.
+Config /sdcard/doom/default.cfg; savegames /sdcard/doom// (slash duplo
+aceito pelo VFS, sem falha observada). Teclado detectado/eventos recebidos,
+SFX sgtsit/itemup/dmact gerados e render46.5fps inicial. Sem abort observado.
+Logs preservados: .debug_logs/sd-doom-folder-serial.log.
+Nenhum novo flash neste teste; apenas monitoramento do reset.
+
+SUPORTE À PASTA /doom NO MICROSD — 2026-10-02
+------------------------------------------
+Pedido do usuário implementado: busca /sdcard/doom primeiro, depois raiz SD,
+por último SPIFFS. Cada local prioriza doom2/doom/doom1 (.wad ou .WAD).
+Mod chiquito procurado apenas junto do IWAD selecionado no SD.
+Com IWAD em /doom, chdir e doomEsp_savedir apontam /sdcard/doom/.
+Corrigido slash final no diretório config (antes gerava /sdcarddefault.cfg).
+Arquivo do cartão corresponde a /doom/DOOM.WAD, mount interno /sdcard/doom/DOOM.WAD.
+Não foi possível confirmar arquivo SD sem ele estar presente no cartão;
+firmware gravado e fallback SPIFFS monitorado. Logs sd-doom-folder-*.log.
+
+VALIDAÇÃO DO WAD COMPLETO E ÁUDIO — 2026-10-02
+-------------------------------------------
+Usuário confirmou após firmware audio-amp: "agora carregou a fase, e tem audio".
+Correção final saída física: P1 do expansor0x43 PUSH_PULL antes de set_level1;
+reset do driver mantinha HIGHZ=FF e set_dir/set_level não resolviam isso.
+Compatibilidade IWAD antigo: STBAR em duas metades, STTMINUS -> STCFN045,
+D_INTROA opcional, M_NMARE desenhado com fonte, demos pré1.4.
+WAD completo (três episódios) gravado no SPIFFS, hash verificado, original intacto.
+Preload PSRAM10396254bytes em4758ms; gráficos perto de9.8s após boot.
+Serial pós-flash: teclado+SFX, demo~37-39fps, PPA~9.7ms, sem novo abort.
+Música NÃO implementada; efeitos físicos agora confirmados. Logs finais:
+.debug_logs/audio-amp-build.log / audio-amp-flash.log / audio-amp-serial.log.
+Não repetir hipóteses ST7703 ou codec init apenas; display ST7123 validado.
+
+CONTINUAÇÃO — AMPLIFICADOR EM ALTA IMPEDÂNCIA — 2026-10-02
+------------------------------------------------------
+Menu M_NMARE corrigido: último firmware ficou >110s renderizando ~37-40fps,
+sem abort no serial, teclado detectado; usuário ainda relatou sem áudio.
+Encontrado no driver local PI4IOE5V6408: reset escreve HIGHZ=0xff.
+esp_io_expander_set_dir/set_level não alteram HIGHZ. Logo P1 com latch alto
+continuava open-drain/alta impedância, podendo não habilitar NS4150B.
+Agora bsp_audio_codec_speaker_init configura SOMENTE P1 PUSH_PULL,
+set_level alto com ESP_ERROR_CHECK e leitura do nível no serial.
+Não alterar P4: liberação LCD como entrada/pull-up já validada.
+Build/flash/monitor: .debug_logs/audio-amp-*.log. Som físico pendente.
+
+CONTINUAÇÃO — REINÍCIOS DO WAD ANTIGO E PSRAM — 2026-10-02
+------------------------------------------------------
+Não reabrir diagnóstico ST7123: aborts recentes são recursos ausentes do IWAD.
+Serial capturou D_INTROA ausente após gráficos: s_sound mantém D_INTRO se
+D_INTROA não existir. STTMINUS ausente: st_lib usa STCFN045 (fonte HUD).
+Depois de menu e teclas funcionarem, seleção de dificuldade abortou porque
+M_NMARE não existe: m_menu desenha NIGHTMARE! com a fonte HUD nesse caso.
+M_CELL1/2 também ausentes, mas funções não chamadas; M_EPI4 não é mostrado
+em DOOM Registered (três episódios). BOSSBACK é finale DOOM2, não este IWAD.
+SPIFFS atualizado e preservado em0x210000; flashes seguintes só do app.
+WAD copiado sequencialmente para PSRAM usando backend mapped já suportado
+pelo engine; fallback streaming se malloc/leitura falhar. 10396254 bytes em
+4758-4760ms. Depois R_Init/ST_Init terminam rapidamente, gráficos ~9.8s boot.
+STTMINUS corrigido: serial confirmou teclado, eventos, SFX pstop/pistol,
+42.2fps inicial e37-39fps durante demo; depois M_NMARE abortou (corrigido agora).
+ES8388: reset e sequência completa de DAC baseada em M5Unified, ADC off,
+clock DAC independente (2B=08), saída LOUT/ROUT, I2S11025Hz/MCLK256.
+Readback via I2C0x10 confirmado; API esp_codec_dev_write_reg não suportada.
+Áudio físico ainda NÃO confirmado; não confundir SFX logados com som audível.
+Música continua sem sintetizador. Logs: .debug_logs/psram-audio-serial.log,
+old-wad-minus-serial.log e old-wad-menu-serial.log (última gravação).
+
+CONTINUAÇÃO — WAD COMPLETO E DIAGNÓSTICO DE ÁUDIO — 2026-10-02
+----------------------------------------------------------
+WAD fornecido: spiffs/DOOM.WAD, IWAD10396254bytes,2074lumps, episódios1/2/3,
+61DS sounds DMX format3 a11025Hz; SHA256:
+68243b47ea430bec5f6037c49ff5598f9484ac67e25331dfd0e469b95fe9c8cb
+Arquivo preservado sem alterações.
+Partições atualizadas para flash16MB: app2MiB @0x10000;
+SPIFFS0xDF0000bytes @0x210000; NVS/PHY mantidos.
+Novo SPIFFS gerado e gravado com tabela/app/bootloader; esptool verificou hash.
+Loader SPIFFS detecta nomes maiúsculos/minúsculos e usa fopen, pois access
+não encontrou IWAD no VFS SPIFFS. Serial confirmou /spiffs/DOOM.WAD e
+"DOOM Registered".
+WAD é uma edição antiga: não contém STBAR. Implementado fallback que desenha
+STMBARL104x32 + STMBARR216x32 lado a lado. Cabeçalhos de DEMO1/2/3 são
+pré1.4, sem byte versão: adicionada leitura de skill/episode/map/player flags,
+sem consumir flags modernas inexistentes (demos E2M4,E3M3,E3M6).
+Áudio: dev_type OUT e I2S sóTX, removendo tentativa de habilitar RX.
+Codec aberto antes de volume70/unmute; retorno de escrita verificado.
+Tom curto440Hz na inicialização para distinguir saída física de efeitos.
+Primeiro tom não ouvido pelo usuário. Novo teste aplica DAC routing
+M5Unified via I2C direto em0x10 (API codec write_reg não suportada):
+02=0A,27=B8,2A=B8,2B=08,19=20, readback confirmado no serial.
+Mantido ratio MCLK256; todo DS deste WAD é11025Hz.
+Mixer priority5; validação limites DMX antes de tocar, primeiros5SFX logados.
+Música continua dummy (não sintetizada); efeitos e música são caminhos distintos.
+Logs: .debug_logs/full-wad-flash.log; full-wad-loader-serial.log;
+full-wad-compat-build.log / full-wad-compat-flash.log / full-wad-compat-serial.log.
+Validação física áudio solicitada; inicialização de gráficos monitorada.
+
+VALIDAÇÃO FINAL DO USUÁRIO — 2026-10-02
+-------------------------------------
+Usuário confirmou: "Paisagem e controles funcionando" no firmware atual.
+Build e flash OK; serial após flash confirmou ST7123, 27 comandos com FIFO
+esvaziada, Tab5 Keyboard em0x6D detectado e evento de tecla recebido.
+Últimas medições: ~35.8-40.8 fps em cena corrente, PPA~9.7ms/max~10.1ms.
+Houve janela anterior com9.5fps no contador: lags não considerados resolvidos.
+Removida sincronização redundante de framebuffer; diagnóstico de desempenho
+mantido. Próxima investigação deve medir lógica do jogo/leituras WAD separadas
+antes de alterar novamente a inicialização do display, que está validada.
+Logs locais ignorados pelo git, preservados em .debug_logs/keyboard-serial.log.
+
+CONTINUAÇÃO — PAISAGEM, RENDERIZAÇÃO E TAB5 KEYBOARD
+-------------------------------------------------
+Após sucesso ST7123, usuário relatou lags ocasionais e orientação retrato;
+pediu suporte ao teclado original M5Stack conectado à Ext.Port1.
+Firmware seguinte flashado e monitorado:
+- Rotação PPA 90 graus; escala quantizada 3.5625 (hardware precisão 1/16).
+  DOOM 1140x712 em landscape 1280x720; framebuffer físico720x1280,
+  bloco rotacionado712x1140, offset físico (4,70).
+- Removido cache writeback C2M do framebuffer completo após cada PPA e
+  sincronização redundante da entrada. Driver IDF PPA já sincroniza janelas.
+- Retorno PPA agora verificado; log de FPS e duração média/máxima a cada 5s.
+  Medições no firmware landscape anterior: PPA ~9.7ms (máx ~9.8ms),
+  FPS variou24-39 conforme a cena. Não afirmar que todos os lags foram resolvidos.
+- USB-A 5V habilitado via read/modify/write em0x44/P3, preservando outros bits.
+- Teclado original NÃO é USB: I2C1 SDA=GPIO0,SCL=GPIO1, endereço0x6D.
+  Task dedicada lê modo Normal(reg0x10=0), eventos reg0x20:
+  bit7=press/release, bits6:4=linha0..4, bits3:0=coluna0..13; FF=fila vazia.
+  Mapeamento matriz baseado no M5Unit-KEYBOARD da M5Stack.
+  Suporta teclas simultâneas, mantém estado, sem soltar tecla enquanto outra
+  tecla física com o mesmo mapeamento estiver pressionada.
+  Controles: WASD/setas=mover/girar; Ctrl=atirar; E/Espaço=usar;
+  Aa=correr; Alt=strafe; Enter=confirmar; Esc=menu; 1..7=armas.
+- Serial confirmou "Tab5 Keyboard ready" e primeiro evento de jogo recebido.
+  Validação visual da orientação e jogabilidade ainda solicitada ao usuário.
+- Logs atuais: .debug_logs/keyboard-build.log / keyboard-flash.log /
+  keyboard-serial.log. Sempre monitorar depois do flash.
+- Fonte do protocolo: https://github.com/m5stack/M5Unit-KEYBOARD
+
+RESULTADO CONFIRMADO — CONTINUAÇÃO 2026-10-02
+-------------------------------------------
+SUCESSO VISUAL: após o último flash, o usuário confirmou "opa agora aparecei".
+Firmware ST7123: DOOM inicia e a tela apresenta imagem. Não repetir os testes
+antigos de ST7703 para este aparelho: controlador identificado é ST7123.
+Causa principal identificada: reset do touch estava em P5 (camera), devia ser
+P6. Após corrigir P6 e liberar LCD P4 como entrada/pull-up, surgiu I2C 0x55.
+Leitura 16-bit do registro 0x0000 retornou versão 3 (ST7123), ESP_OK.
+Driver e tabela corretos: components/esp_lcd_st7123, sequência M5Stack completa
+(27 comandos), ACK desabilitado e verificação de FIFO após cada comando.
+Payloads de 40, 55 e 60 bytes transmitidos e FIFOs esvaziadas: refuta o limite
+absoluto de 32 bytes alegado anteriormente. Não houve necessidade de fragmentar.
+Timings: 965 Mbps, 2 lanes; DPI 70 MHz; H pulse/back/front=2/40/40;
+V pulse/back/front=2/8/220; framebuffer RGB565 720x1280 (DOOM 720x450).
+Reset e sequência de comandos são executados antes da criação do DPI.
+Logs preservados: .debug_logs/st7123-serial.log e st7123-flash.log.
+Imagem levou algum tempo para aparecer; não concluir falha imediatamente
+quando o serial chega a M_Init/R_Init. Aguardar I_InitGraphics e observar tela.
+Touch integrado ainda não inicializado; áudio/teclado não validados pelo usuário.
+Observado log de áudio: i2s_channel_disable: channel not enabled yet; não
+impediu inicialização nem imagem. Não alterado nesta tarefa focada no display.
+A cópia local ST7703 é preservada como registro de diagnóstico, não usada
+pelo BSP atual. Comentários do BSP corrigidos para ST7123 após sucesso.
+
+ATUALIZAÇÃO — 2026-10-02
+-----------------------
+Ler primeiro o adendo em TAB5DOOM_DISPLAY_INIT_HISTORY.txt.
+Tentativa 8 testada: DOOM inicia, tela preta confirmada.
+ACK desabilitado + verificação de FIFO permitiram 3A após EF e 29 após 11.
+Isso invalida a conclusão antiga de bloqueio permanente de LP; tela ainda preta.
+Driver usado agora: components/esp_lcd_st7703 (cópia local versionável).
+Novo teste corrige touch reset P6 e liberação LCD P4 via entrada/pull-up.
+Logs de build, flash e serial em .debug_logs/ dentro deste projeto.
+Identificação do controlador físico ainda pendente; ST7703 é hipótese antiga.
+
+================================================================================
+  Tab5Doom — Progresso de Adaptação para M5Stack Tab5 (ESP32-P4)
+  Gerado em: 2026-10-02
+================================================================================
+
+OBJETIVO
+--------
+Portar o jogo DOOM para o M5Stack Tab5 (ESP32-P4), adaptando o fork
+tpklge/Tab5Doom (originalmente para ESP32-P4-Function-EV-Board).
+
+HARDWARE ALVO
+-------------
+- SoC:      ESP32-P4, RISC-V dual-core 360 MHz, 32 MB Octal PSRAM
+- Display:  720×1280 portrait, IC ST7703, MIPI-DSI 2 lanes @ 720 Mbps
+- Áudio:    ES8388 codec (I2C @ 0x10), I2S (MCLK=30, BCLK=27, WS=29, DOUT=26, DIN=28)
+- IO Exp.:  PI4IOE5V6408 @ I2C 0x43 (speaker amp, 5V rail, LCD/TP reset)
+- Touch:    GT911 (endereços 0x40/0x41 encontrados no scan, 0x14/0x5D não respondem)
+- SD card:  GPIOs 39-44 (igual ao EV-Board)
+- ESP-IDF:  v5.4.4
+
+ARQUIVOS CRIADOS/MODIFICADOS
+-----------------------------
+
+1. main/bsp_tab5.h  (criado — substitui bsp_p4_eval.h)
+   - Macros de GPIO para Tab5 (I2C, I2S, backlight, IO expander)
+   - LCD_H_RES=720, LCD_V_RES=1280 (portrait)
+   - LCD_BITRATE_MBPS=720, LCD_DSI_LANES=2
+   - Struct bsp_p4_handles_t mantida com mesma assinatura
+
+2. main/bsp_tab5.c  (criado — substitui bsp_p4_eval.c)
+   - Inicializa LDO MIPI DPHY (canal 3 @ 2500 mV)
+   - Inicia I2C bus (GPIO 31/32)
+   - Inicializa IO expander PI4IOE5V6408 @ 0x43
+   - Habilita trilho externo de 5V via IO expander bit 2
+   - Pulso de reset para LCD e touch via IO expander bits 4 e 5
+   - Backlight LEDC PWM @ GPIO 22, 100% duty
+   - MIPI DSI bus @ 720 Mbps, 2 lanes
+   - DBI IO para envio de comandos de inicialização
+   - ST7703 panel + timing DPI:
+       h_size=720, v_size=1280
+       hsync: pulse=4, back=40, front=40
+       vsync: pulse=4, back=12, front=16
+       DPI clock = 58 MHz (~55 fps)
+   - init_in_command_mode = true
+   - I2C scan após reset (log de dispositivos encontrados)
+   - Áudio: I2S + ES8388 codec + speaker amp via IO expander bit 1
+
+3. managed_components/espressif__esp_lcd_st7703/esp_lcd_st7703.c  (modificado)
+   - Adicionado campo `vendor_cmds_done` em st7703_panel_t
+   - Adicionada função st7703_send_vendor_init_cmds()
+   - init_in_command_mode=true: envia vendor cmds ANTES de esp_lcd_new_panel_dpi()
+     para evitar bloqueio da FIFO LP pelo timer de underrun do DSI bridge
+   - vendor_specific_init_default[]: 19 comandos (sem 0x36, 0x3A, 0x29 — ver abaixo)
+   - panel_st7703_reset(): skip quando vendor_cmds_done=true
+   - panel_st7703_init(): inicia DPI primeiro, depois skipa MADCTL/COLMOD
+   - panel_st7703_disp_on_off(): skip do comando 0x29 quando vendor_cmds_done=true
+
+4. main/CMakeLists.txt  (modificado)
+   - SRCS: bsp_tab5.c (era bsp_p4_eval.c)
+   - PRIV_REQUIRES: adicionado esp_lcd_st7703, esp_io_expander_pi4ioe5v6408
+
+5. main/idf_component.yml  (modificado)
+   - Adicionado: espressif/esp_lcd_st7703, espressif/esp_io_expander_pi4ioe5v6408
+
+PROBLEMA CENTRAL RESOLVIDO (display init via MIPI-DSI LP)
+----------------------------------------------------------
+Sintoma: Todos os comandos LP após a sequência vendor travam no spin loop
+         mipi_dsi_host_ll_gen_is_cmd_fifo_full() sem timeout.
+
+Causa raiz: O ST7703 ocupa permanentemente os lanes DSI após o Sleep Out (0x11).
+            O DSI bridge do ESP32-P4 só aceita comandos LP durante intervalos
+            de blanking do vídeo DPI. Antes do DPI começar a transmitir frames,
+            qualquer LP após 0x11 trava indefinidamente.
+
+Solução implementada (sequência final):
+  1. ANTES de esp_lcd_new_panel_dpi(): enviar os 19 vendor cmds (0xB9..0x11)
+  2. esp_lcd_new_panel_dpi(): criar o painel DPI (habilita DSI bridge)
+  3. panel_st7703_reset(): skip (já feito via IO expander antes)
+  4. panel_st7703_init(): inicia DPI video PRIMEIRO, depois skipa MADCTL/COLMOD
+     (LP bloqueado após 0x11 — MADCTL=0x00 default é OK)
+  5. panel_st7703_disp_on_off(true): skip do 0x29 LP
+     (display deve se auto-habilitar ao receber o primeiro burst DPI HS)
+
+Comandos OMITIDOS da sequência vendor e motivo:
+  - 0xC8 (1 byte):   muda estado de recepção DSI do painel; bloqueia LP seguintes
+  - 0xE0 (34 bytes): excede o FIFO TX DSI de 32 bytes — deadlock de hardware
+  - 0xE9 (63 bytes): idem
+  - 0xEA (63 bytes): idem
+  - 0x36 MADCTL:     após 0xEF o painel bloqueia 0x3A; omitir ambos (default 0x00)
+  - 0x3A COLMOD:     ver acima; formato DPI fixado pelos registradores vendor
+  - 0x29 Display On: após 0x11 todos LP bloqueados permanentemente
+
+SEQUÊNCIA DE LOG ESPERADA (build atual, NÃO FLASHADO ainda)
+-----------------------------------------------------------
+  I (...) st7703: sending 19 vendor init cmds before DPI panel creation
+  I (...) st7703: pre-DPI cmd[0]: 0xB9 ...
+  ...
+  I (...) st7703: pre-DPI cmd[18]: 0x11 (1 bytes)
+  I (...) st7703: pre-DPI vendor init cmds done
+  I (...) st7703: esp_lcd_new_panel_dpi OK @0x...
+  I (...) st7703: panel_st7703_reset: skipped (pre-DPI init already done)
+  I (...) st7703: panel_st7703_init: starting DPI (vendor cmds already done)
+  I (...) st7703: panel_st7703_init: DPI started, ...
+  I (...) st7703: panel_st7703_init: MADCTL/COLMOD already sent ..., skipping
+  I (...) st7703: disp_on_off(1): skipped (LP blocked post-Sleep-Out; ...)
+  I (...) BSP_TAB5: Tab5 display ready (touch skipped)
+  [DOOM init: W_Init, Z_Init, D_DoomLoop...]
+
+ESTADO ATUAL
+------------
+- Build: COMPILADO COM SUCESSO (firmware com skip do 0x29 em disp_on_off)
+- Flash:  NÃO FLASHADO (usuário pausou antes de flashar)
+- Próximo passo: flashar e observar se o display exibe output do DOOM
+
+COMANDO PARA FLASH + MONITOR
+-----------------------------
+  lsof /dev/cu.usbmodem101 | awk 'NR>1{print $2}' | sort -u | xargs kill -9
+  idf.py -p /dev/cu.usbmodem101 flash monitor
+
+QUESTÕES EM ABERTO
+------------------
+1. O ST7703 se auto-habilita ao receber vídeo DPI sem o comando 0x29?
+   - Se não: mover 0x29 para ANTES de 0x11 na sequência vendor (não-padrão)
+   - Alternativa: enviar 0x29 em modo HS (embedded packet), não LP
+
+2. Comandos gamma E0/E9/EA (63 bytes cada):
+   - Excedem o FIFO TX de 32 bytes
+   - Possível solução: enviar em múltiplos writes de ≤32 bytes cada
+   - Impacto: qualidade de cor pode ser subótima sem gamma correction
+
+3. Touch controller:
+   - I2C scan encontrou 0x40 e 0x41 (não 0x14/0x5D do GT911 padrão)
+   - Pode ser Goodix GT911 com endereço alternativo, ou outro IC
+   - Touch init está skippado por enquanto
+
+4. Áudio:
+   - ES8388 inicializado mas não testado em contexto do DOOM
+   - Sample rate 11025 Hz configurado (correto para DOOM)
+
+ESCALA PPA (DOOM 320×200 → tela 720×1280)
+------------------------------------------
+  Modo portrait: 320×200 → 720×450
+  scale_x = 720/320 = 2.25
+  scale_y = 450/200 = 2.25  (aspecto correto 16:10 aproximado)
+  Letterbox: 415 px topo e base (tela tem 1280px vertical)
+  Barras laterais: nenhuma (320 × 2.25 = 720px exato)
+
+================================================================================
+
+2026-10-05 — Tab5UltDoom criado como cópia independente de Tab5Doom2.
+Busca DOOM-ultimate.wad em /doom e na raiz do microSD; FAT LFN habilitado.
+Nome CMake/binário Tab5UltDoom; SPIFFS legado não copiado nem gerado.
+Detecção nativa E4M1 => retail/exe_ultimate já existe no engine.
+Validação física dos quatro episódios pendente.
+Build ESP-IDF 5.4.4 concluído: build/Tab5UltDoom.bin, 883856 bytes; partição 2 MiB.
+Nenhum flash realizado.
+
+2026-10-05 — Serial ultimate-20261005-080503.log capturou 36–38 FPS e
+abort na saída. ELF 897ae471f confirmado: D_Endoom exit(0) -> syscall não suportada.
+Aplicada correção da base Freedoom: callback ENDOOM retorna no ESP, I_Quit
+executa callbacks/config e esp_restart. Teste físico da saída pendente.
+Correção compilou: build/Tab5UltDoom.bin, 883872 bytes; nenhum flash.
+Serial confirmou The Ultimate DOOM / exe Ultimate e caminho correto do WAD.
